@@ -5,10 +5,22 @@ defmodule Skn.Run do
 
   def start_zabbix_server() do
     http_port = Skn.Config.get(:http_zabbix_server_port, -1)
-    module = Skn.Config.get(:web_stats_mod, Skn.Stats.RestApi)
+    module = Skn.Config.get(:http_zabbix_server_mod, Skn.Run.ZabbixHandle)
     if is_integer(http_port) and http_port > 1024 and http_port < 65535 do
-      dispatch = :cowboy_router.compile([{:_, [{:_, module, []}]}])
-      :cowboy.start_clear(:http, [{:port, http_port}], %{env: %{dispatch: dispatch}})
+      dispatch = :cowboy_router.compile([
+        {:_, [
+          {:_, module, []}
+        ]}
+      ])
+      ranch_opts = %{
+        num_acceptors: 2,
+        max_connections: :infinity,
+        socket_opts: [
+          {:port, Skn.Config.get(:http_code_server_port, http_port)}
+        ]
+      }
+      :persistent_term.put(:zabbix_dispatch, dispatch)
+      :cowboy.start_clear(:zabbix_http, ranch_opts, %{env: %{dispatch: {:persistent_term, :zabbix_dispatch}}})
     else
       {:ok, :ignore}
     end
@@ -19,10 +31,9 @@ defmodule Skn.Run do
     if is_integer(code_port) and code_port > 1024 and code_port < 65535 do
       dispatch = :cowboy_router.compile([
         {:_, [
-          {:_, Skn.Run.CodeServer, %{}},
+          {'/:app_node/[...]', Skn.Run.CodeServer, %{}},
         ]}
       ])
-      :persistent_term.put(:mt5_dispatch, dispatch)
       ranch_opts = %{
         num_acceptors: 2,
         max_connections: :infinity,
@@ -30,17 +41,18 @@ defmodule Skn.Run do
           {:port, Skn.Config.get(:http_code_server_port, code_port)}
         ]
       }
-      :cowboy.start_clear(:mt5_http, ranch_opts, %{env: %{dispatch: {:persistent_term, :mt5_dispatch}}})
+      :persistent_term.put(:code_dispatch, dispatch)
+      :cowboy.start_clear(:code_http, ranch_opts, %{env: %{dispatch: {:persistent_term, :code_dispatch}}})
     else
       :skip
     end
   end
 
-  def set_stats_counter_type_mod(mod) do
-    Skn.Config.set(:web_stats_counter_type_mod, mod)
+  def set_zabbix_counter_type_mod(mod) do
+    Skn.Config.set(:zabbix_counter_type_mod, mod)
   end
 
-  def register_stats_discover(data) do
-    Skn.Config.set(:web_stats_discover_data, data)
+  def register_zabbix_discover(data) do
+    Skn.Config.set(:zabbix_discover_data, data)
   end
 end

@@ -35,11 +35,16 @@ defmodule Skn.Run.CodeServer do
     end
   end
 
-  def bot_sync_keys() do
-    url = "http://127.0.0.1:#{get_sync_port()}/sync_bot_keys?app=#{Skn.Config.get(:app)}"
+  defp default_gun_option, do: Gun.default_option(25_000, 90_000)
+  defp make_request(method, url, headers, body) do
+    HttpEx.request("CODE", method, url, headers, body, default_gun_option(), 0, [], nil)
+  end
+
+  def bot_sync_keys(dst_port \\ nil, dst_path \\ nil) do
+    url = make_url(dst_port, dst_path) <> "/sync_bot_keys?app=#{Skn.Config.get(:app)}"
     headers = %{"connection" => "close"}
     try do
-      case GunEx.http_request("GET", url, headers, "", GunEx.default_option(), nil) do
+      case make_request("GET", url, headers, "") do
         %{status_code: 200, body: body} ->
           keys = Jason.decode!(body)["keys"]
           keys
@@ -53,14 +58,13 @@ defmodule Skn.Run.CodeServer do
     end
   end
 
-  def bot_sync_with_prod(bot_id, :write) do
-#    Logger.debug("bot #{bot_id} upload")
+  def bot_write_to_prod(bot_id, dst_port \\ nil, dst_path \\ nil) do
     %{config: config} = Skn.Bot.read(bot_id)
-    url = "http://127.0.0.1:#{get_sync_port()}/sync_bot_write?id=#{bot_id}&app=#{Skn.Config.get(:app)}"
+    url = make_url(dst_port, dst_path) <> "/sync_bot_write?id=#{bot_id}&app=#{Skn.Config.get(:app)}"
     headers = %{"connection" => "close"}
     bin = :erlang.term_to_binary(config)
     try do
-      case GunEx.http_request("POST", url, headers, bin, GunEx.default_option(), nil) do
+      case make_request("POST", url, headers, bin) do
         %{status_code: 200, body: body} ->
           ok = Jason.decode!(body)["error_code"] == 0
           if ok == true do
@@ -80,12 +84,11 @@ defmodule Skn.Run.CodeServer do
     end
   end
 
-  def bot_sync_with_prod(bot_id, :read) do
-#    Logger.debug("bot #{bot_id} download")
-    url = "http://127.0.0.1:#{get_sync_port()}/sync_bot_read?id=#{bot_id}&app=#{Skn.Config.get(:app)}"
+  def bot_read_from_prod(bot_id, dst_port \\ nil, dst_path \\ nil) do
+    url = make_url(dst_port, dst_path) <> "/sync_bot_read?id=#{bot_id}&app=#{Skn.Config.get(:app)}"
     headers = %{"connection" => "close"}
     try do
-      case GunEx.http_request("GET", url, headers, "", GunEx.default_option(), nil) do
+      case make_request("GET", url, headers, "") do
         %{status_code: 200, body: body} ->
           config = :erlang.binary_to_term(body)
           if is_map(config) do
@@ -106,26 +109,64 @@ defmodule Skn.Run.CodeServer do
     end
   end
 
-  def code_sync(module)  do
-    Enum.map(List.wrap(get_sync_port()), fn x ->
-      {x, do_code_sync(x, module)}
+  def make_url(dst_port, dst_path) do
+    dst_port = if dst_port == nil, do: Skn.Config.get(:http_code_connect_port, 8086), else: dst_port
+    dst_path = if dst_path == nil, do: Skn.Config.get(:http_code_connect_path, nil), else: dst_path
+    if dst_path == nil do
+      "http://127.0.0.1:#{dst_port}"
+    else
+      "http://127.0.0.1:#{dst_port}/#{dst_path}"
+    end
+  end
+
+  def code_sync(modules, dst_pair \\ nil)
+  def code_sync(modules, dst_pair) when is_list(modules) do
+    Enum.each(modules, fn x -> code_sync(x, dst_pair, 0) end)
+    code_reload(modules, dst_pair)
+  end
+  def code_sync(module, dst_pair) do
+    code_sync(module, dst_pair, 1)
+  end
+
+  def code_sync(module, dst_pair, reload) when is_atom(module)  do
+    dst_pair = if dst_pair == nil, do: {Skn.Config.get(:http_code_connect_port, 8086), Skn.Config.get(:http_code_connect_path, nil)}, else: dst_pair
+    Enum.map(List.wrap(dst_pair), fn {x_port, x_path} ->
+      {x_port, x_path, do_code_sync(module, x_port, x_path, reload)}
+    end)
+
+  end
+
+  def code_reload(modules, dst_pair) do
+    dst_pair = if dst_pair == nil, do: {Skn.Config.get(:http_code_connect_port, 8086), Skn.Config.get(:http_code_connect_path, nil)}, else: dst_pair
+    Enum.map(List.wrap(dst_pair), fn {x_port, x_path} ->
+      {x_port, x_path, do_code_reload(modules, x_port, x_path)}
     end)
   end
 
-  def do_code_sync(port, module) do
-    url = "http://127.0.0.1:#{port}/sync_code?module=#{module}&app=#{Skn.Config.get(:app)}"
+  def do_code_reload(modules, dst_port, dst_path) do
+    url = make_url(dst_port, dst_path) <> "/sync_code?app=#{Skn.Config.get(:app)}"
+    headers = %{"connection" => "close"}
+    case make_request("POST", url, headers, Jason.encode!(%{modules: modules})) do
+      %{status_code: 200, body: body} ->
+        Jason.decode!(body)
+      _exp ->
+        false
+    end
+  catch
+    _, _exp ->
+      false
+  end
+
+  def do_code_sync(module, dst_port, dst_path, reload) do
+    url = make_url(dst_port, dst_path) <> "/sync_code?module=#{module}&app=#{Skn.Config.get(:app)}&reload=#{reload}"
     headers = %{"connection" => "close"}
     try do
       path = :code.which(module)
       bin = File.read!(path)
-      case GunEx.http_request("POST", url, headers, bin, GunEx.default_option(), nil) do
+      case make_request("POST", url, headers, bin) do
         %{status_code: 200, body: body} ->
-          if Jason.decode!(body)["error_code"] == 0 do
-            true
-          else
-            false
-          end
-        _ ->
+          Jason.decode!(body)["error_code"] == 0
+        _exp ->
           false
       end
     catch
@@ -188,17 +229,44 @@ defmodule Skn.Run.CodeServer do
     end
   end
 
+  def process_by_path("/code_reload", req, state) do
+    qs = :cowboy_req.parse_qs(req)
+    {_, app} = List.keyfind(qs, "app", 0)
+    if app == Skn.Config.get(:app) do
+      {:ok, body, _} = :cowboy_req.read_body(req)
+      %{"modules" => modules} = Jason.decode!(body)
+      ret = Enum.map(modules, fn x ->
+        try do
+          module_name = String.to_existing_atom(x)
+          IEx.Helpers.l(module_name)
+          %{m: x, reload: true}
+        catch
+          _, _exp ->
+            %{m: x, reload: false}
+        end
+      end)
+      headers = %{"content-type" => "application/json"}
+      next_req = :cowboy_req.reply(200, headers, Jason.encode!(%{error_code: 0, error_msg: "OK", results: ret}), req)
+      {:ok, next_req, state}
+    else
+      throw({:error, :wrong_app})
+    end
+  end
+
   def process_by_path("/sync_code", req, state) do
     qs = :cowboy_req.parse_qs(req)
     {_, module} = List.keyfind(qs, "module", 0)
     {_, app} = List.keyfind(qs, "app", 0)
+    {_, reload} = List.keyfind(qs, "reload", 0, {"reload", "1"})
     module_name = String.to_existing_atom(module)
     path = :code.which(module_name)
     Logger.debug("sync_code #{module_name} : #{inspect path}")
     if app == Skn.Config.get(:app) and path != [] do
       {:ok, body, _} = :cowboy_req.read_body(req)
       File.write!(path, body, [:binary])
-      IEx.Helpers.l(module_name)
+      if reload == "1" do
+        IEx.Helpers.l(module_name)
+      end
       headers = %{"content-type" => "application/json"}
       next_req = :cowboy_req.reply(200, headers, Jason.encode!(%{error_code: 0, error_msg: "OK"}), req)
       {:ok, next_req, state}
@@ -209,11 +277,11 @@ defmodule Skn.Run.CodeServer do
 
   def handle(req, state) do
     try do
-      path = :cowboy_req.path(req)
-      process_by_path(path, req, state)
+      sub_path = "/" <> Enum.join(:cowboy_req.path_info(req), "/")
+      process_by_path(sub_path, req, state)
     catch
       _, exp ->
-        Logger.error "Exception: #{inspect __STACKTRACE__}"
+        Logger.error("Exception: #{inspect __STACKTRACE__}")
         headers = %{"content-type" => "application/json"}
         error_msg = "#{inspect exp}"
         req2 = :cowboy_req.reply(500, headers, Jason.encode!(%{error_code: 500, error_msg: error_msg}), req)
