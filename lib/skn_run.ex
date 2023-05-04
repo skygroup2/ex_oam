@@ -5,18 +5,17 @@ defmodule Skn.Run do
 
   def start_zabbix_server() do
     http_port = Skn.Config.get(:http_zabbix_server_port, -1)
-    module = Skn.Config.get(:http_zabbix_server_mod, Skn.Run.ZabbixHandle)
     if is_integer(http_port) and http_port > 1024 and http_port < 65535 do
       dispatch = :cowboy_router.compile([
         {:_, [
-          {:_, module, []}
+          {:_, Skn.Config.get(:http_zabbix_server_mod, Skn.Run.ZabbixHandle), []}
         ]}
       ])
       ranch_opts = %{
         num_acceptors: 2,
         max_connections: :infinity,
         socket_opts: [
-          {:port, Skn.Config.get(:http_code_server_port, http_port)}
+          {:port, http_port}
         ]
       }
       :persistent_term.put(:zabbix_dispatch, dispatch)
@@ -31,14 +30,14 @@ defmodule Skn.Run do
     if is_integer(code_port) and code_port > 1024 and code_port < 65535 do
       dispatch = :cowboy_router.compile([
         {:_, [
-          {'/:app_node/[...]', Skn.Run.CodeServer, %{}},
+          {'/:app_node/[...]', Skn.Config.get(:http_code_server_mode, Skn.Run.CodeServer), %{}},
         ]}
       ])
       ranch_opts = %{
         num_acceptors: 2,
         max_connections: :infinity,
         socket_opts: [
-          {:port, Skn.Config.get(:http_code_server_port, code_port)}
+          {:port, code_port}
         ]
       }
       :persistent_term.put(:code_dispatch, dispatch)
