@@ -144,7 +144,7 @@ defmodule Skn.Run.CodeServer do
   end
 
   def do_code_reload(modules, dst_port, dst_path) do
-    url = make_url(dst_port, dst_path) <> "/sync_code?app=#{Skn.Config.get(:app)}"
+    url = make_url(dst_port, dst_path) <> "/reload_code?app=#{Skn.Config.get(:app)}"
     headers = %{"connection" => "close"}
     case make_request("POST", url, headers, Jason.encode!(%{modules: modules})) do
       %{status_code: 200, body: body} ->
@@ -229,7 +229,7 @@ defmodule Skn.Run.CodeServer do
     end
   end
 
-  def process_by_path("/code_reload", req, state) do
+  def process_by_path("/reload_code", req, state) do
     qs = :cowboy_req.parse_qs(req)
     {_, app} = List.keyfind(qs, "app", 0)
     if app == Skn.Config.get(:app) do
