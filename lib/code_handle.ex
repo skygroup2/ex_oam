@@ -109,42 +109,52 @@ defmodule Skn.Run.CodeServer do
     end
   end
 
+  def make_url({dst_port, dst_path}), do: make_url(dst_port, dst_path)
+  def make_url({dst_host, dst_port, dst_path}), do: make_url(dst_host, dst_port, dst_path)
   def make_url(dst_port, dst_path) do
+    make_url(Skn.Config.get(:http_code_connect_host, "127.0.0.1"), dst_port, dst_path)
+  end
+  def make_url(dst_host, dst_port, dst_path) do
     dst_port = if dst_port == nil, do: Skn.Config.get(:http_code_connect_port, 8086), else: dst_port
     dst_path = if dst_path == nil, do: Skn.Config.get(:http_code_connect_path, nil), else: dst_path
     if dst_path == nil do
-      "http://127.0.0.1:#{dst_port}"
+      "http://#{dst_host}:#{dst_port}"
     else
-      "http://127.0.0.1:#{dst_port}/#{dst_path}"
+      "http://#{dst_host}:#{dst_port}/#{dst_path}"
     end
   end
 
-  def code_sync(modules, dst_pair \\ nil)
-  def code_sync(modules, dst_pair) when is_list(modules) do
-    Enum.each(modules, fn x -> code_sync(x, dst_pair, 0) end)
-    code_reload(modules, dst_pair)
+  defp format_target_srv(nil) do
+    {Skn.Config.get(:http_code_connect_host, "127.0.0.1"), Skn.Config.get(:http_code_connect_port, 8086), Skn.Config.get(:http_code_connect_path, nil)}
   end
-  def code_sync(module, dst_pair) do
-    code_sync(module, dst_pair, 1)
+  defp format_target_srv(target), do: target
+
+  def code_sync(modules, targets \\ nil)
+  def code_sync(modules, targets) when is_list(modules) do
+    Enum.each(modules, fn x -> code_sync(x, targets, 0) end)
+    code_reload(modules, targets)
+  end
+  def code_sync(module, targets) do
+    code_sync(module, targets, 1)
   end
 
-  def code_sync(module, dst_pair, reload) when is_atom(module)  do
-    dst_pair = if dst_pair == nil, do: {Skn.Config.get(:http_code_connect_port, 8086), Skn.Config.get(:http_code_connect_path, nil)}, else: dst_pair
-    Enum.map(List.wrap(dst_pair), fn {x_port, x_path} ->
-      {x_port, x_path, do_code_sync(module, x_port, x_path, reload)}
+  def code_sync(module, targets, reload) when is_atom(module)  do
+    dst_pair = format_target_srv(targets)
+    Enum.map(List.wrap(dst_pair), fn target ->
+      {target, do_code_sync(module, target, reload)}
     end)
 
   end
 
-  def code_reload(modules, dst_pair) do
-    dst_pair = if dst_pair == nil, do: {Skn.Config.get(:http_code_connect_port, 8086), Skn.Config.get(:http_code_connect_path, nil)}, else: dst_pair
-    Enum.map(List.wrap(dst_pair), fn {x_port, x_path} ->
-      {x_port, x_path, do_code_reload(modules, x_port, x_path)}
+  def code_reload(modules, targets) do
+    dst_pair = format_target_srv(targets)
+    Enum.map(List.wrap(dst_pair), fn target ->
+      {target, do_code_reload(modules, target)}
     end)
   end
 
-  def do_code_reload(modules, dst_port, dst_path) do
-    url = make_url(dst_port, dst_path) <> "/reload_code?app=#{Skn.Config.get(:app)}"
+  def do_code_reload(modules, target) do
+    url = make_url(target) <> "/reload_code?app=#{Skn.Config.get(:app)}"
     headers = %{"connection" => "close"}
     case make_request("POST", url, headers, Jason.encode!(%{modules: modules})) do
       %{status_code: 200, body: body} ->
@@ -157,8 +167,8 @@ defmodule Skn.Run.CodeServer do
       false
   end
 
-  def do_code_sync(module, dst_port, dst_path, reload) do
-    url = make_url(dst_port, dst_path) <> "/sync_code?module=#{module}&app=#{Skn.Config.get(:app)}&reload=#{reload}"
+  def do_code_sync(module, target, reload) do
+    url = make_url(target) <> "/sync_code?module=#{module}&app=#{Skn.Config.get(:app)}&reload=#{reload}"
     headers = %{"connection" => "close"}
     try do
       path = :code.which(module)
