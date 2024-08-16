@@ -30,7 +30,7 @@ defmodule Skn.Run do
     if is_integer(code_port) and code_port > 1024 and code_port < 65535 do
       dispatch = :cowboy_router.compile([
         {:_, [
-          {'/:app_node/[...]', Skn.Config.get(:http_code_server_mode, Skn.Run.CodeServer), %{}},
+          {~c"/:app_node/[...]", Skn.Config.get(:http_code_server_mode, Skn.Run.CodeServer), %{}},
         ]}
       ])
       ranch_opts = %{
