@@ -17,8 +17,8 @@ defmodule SknRun.MixProject do
       extra_applications: [
         :logger,
         :skn_lib,
+        :skn_bot,
         :skn_proto,
-        :skn_bot
       ]
     ]
   end
@@ -26,8 +26,8 @@ defmodule SknRun.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:skn_proto, git: "git@github.com:skygroup2/skn_proto.git", branch: "main"},
       {:skn_bot, git: "git@github.com:skygroup2/skn_bot.git", branch: "main"},
+      {:skn_proto, git: "git@github.com:skygroup2/skn_proto.git", branch: "main"},
       {:cowboy, "~> 2.10"},
       {:jason, "~> 1.4"}
     ]
