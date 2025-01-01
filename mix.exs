@@ -28,7 +28,7 @@ defmodule SknRun.MixProject do
     [
       {:skn_bot, git: "git@github.com:skygroup2/skn_bot.git", branch: "main"},
       {:skn_proto, git: "git@github.com:skygroup2/skn_proto.git", branch: "main"},
-      {:cowboy, "~> 2.9"},
+      {:cowboy, "~> 2.11"},
       {:jason, "~> 1.4"}
     ]
   end
