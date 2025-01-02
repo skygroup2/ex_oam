@@ -18,7 +18,7 @@ defmodule SknRun.MixProject do
         :logger,
         :skn_lib,
         :skn_bot,
-        :skn_proto,
+        :cq_util,
       ]
     ]
   end
@@ -27,7 +27,7 @@ defmodule SknRun.MixProject do
   defp deps do
     [
       {:skn_bot, git: "git@github.com:skygroup2/skn_bot.git", branch: "main"},
-      {:skn_proto, git: "git@github.com:skygroup2/skn_proto.git", branch: "main"},
+      {:cq_util, git: "git@github.com:orange-capital/cq-util.ex.git", branch: "main"},
       {:cowboy, "~> 2.11"},
       {:jason, "~> 1.4"}
     ]

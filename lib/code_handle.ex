@@ -35,9 +35,9 @@ defmodule Skn.Run.CodeServer do
     end
   end
 
-  defp default_gun_option, do: Gun.default_option(25_000, 90_000)
+  defp default_proxy_option, do: CQ.HttpEx.sync_proxy_option(%{}, 25_000, 90_000)
   defp make_request(method, url, headers, body) do
-    HttpEx.request("CODE", method, url, headers, body, default_gun_option(), 0, [], nil)
+    CQ.HttpEx.request("CODE", method, url, headers, body, default_proxy_option(), 0, [], nil)
   end
 
   def bot_sync_keys(dst_port \\ nil, dst_path \\ nil) do
